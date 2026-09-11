@@ -1,0 +1,135 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ASSET_MANAGER
+  VIEWER
+}
+
+enum AssetStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_TRANSIT
+  MAINTENANCE
+  LOST
+  DAMAGED
+  RETIRED
+}
+
+enum ScanStatus {
+  SUCCESS
+  NOT_FOUND
+  LOCATION_MISMATCH
+}
+
+enum AuditAction {
+  ASSET_CREATED
+  ASSET_UPDATED
+  ASSET_DELETED
+  ASSET_ASSIGNED
+  LOCATION_CHANGED
+  STATUS_CHANGED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(VIEWER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedAssets Asset[]       @relation("AssetAssignedTo")
+  scanRecords    ScanRecord[]  @relation("ScanPerformedBy")
+  auditLogs      AuditLog[]    @relation("AuditPerformedBy")
+
+  @@index([role])
+}
+
+model Location {
+  id          String   @id @default(cuid())
+  name        String
+  building    String
+  room        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  assets       Asset[]
+  scanRecords  ScanRecord[] @relation("ScanLocation")
+
+  @@index([building, room])
+}
+
+model Asset {
+  id           String      @id @default(cuid())
+  assetCode    String      @unique
+  name         String
+  category     String
+  serialNumber String?     @unique
+  rfidTag      String?     @unique
+  status       AssetStatus @default(AVAILABLE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  assignedToId String?
+  assignedTo   User?   @relation("AssetAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  scanRecords ScanRecord[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+  @@index([locationId])
+  @@index([assignedToId])
+}
+
+model ScanRecord {
+  id         String     @id @default(cuid())
+  assetId    String
+  asset      Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  rfidTag    String
+  locationId String?
+  location   Location?  @relation("ScanLocation", fields: [locationId], references: [id], onDelete: SetNull)
+  scannedById String?
+  scannedBy   User?      @relation("ScanPerformedBy", fields: [scannedById], references: [id], onDelete: SetNull)
+  scanStatus ScanStatus
+  scannedAt  DateTime   @default(now())
+
+  @@index([assetId])
+  @@index([locationId])
+  @@index([scannedById])
+  @@index([scannedAt])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  assetId   String
+  asset     Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?       @relation("AuditPerformedBy", fields: [userId], references: [id], onDelete: SetNull)
+  action    AuditAction
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime    @default(now())
+
+  @@index([assetId])
+  @@index([userId])
+  @@index([action])
+}
